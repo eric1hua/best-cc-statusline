@@ -1,7 +1,7 @@
 #!/bin/bash
 # Claude Code 状态栏 (多行版)
 #
-# 第1行: 📁路径 │ git分支 │ 模型 │ effort强度 │ 🧠思考模式
+# 第1行: 📁路径 │ 🌿git分支+ahead/behind+脏区 │ PR状态 │ 模型 │ effort强度 │ 🧠思考模式
 # 第2行: 上下文窗口进度条 + 用量% (已用/总量 token)
 # 第3行: 上行(输入)token │ 下行(输出)token │ 缓存命中率 │ 费用 │ 耗时
 # 第4行: 5小时用量窗口(%+重置时间) │ 7天用量窗口(%+重置时间)
@@ -53,7 +53,26 @@ color_for_effort() {
   esac
 }
 
-# ================= 第1行: 路径 │ git分支 │ 模型 │ effort/思考模式 =================
+# PR/MR review 状态 -> 图标 + 配色
+icon_for_review_state() {
+  case "$1" in
+    approved) echo "✅" ;;
+    changes_requested) echo "❌" ;;
+    pending) echo "🔍" ;;
+    draft) echo "📝" ;;
+    *) echo "🔀" ;;
+  esac
+}
+color_for_review_state() {
+  case "$1" in
+    approved) echo "$GREEN" ;;
+    changes_requested) echo "$RED" ;;
+    pending) echo "$YELLOW" ;;
+    *) echo "$DIM" ;;
+  esac
+}
+
+# ================= 第1行: 路径 │ git分支+状态 │ PR │ 模型 │ effort/思考模式 =================
 
 dir=$(echo "$input" | jq -r '.workspace.current_dir // .cwd // empty')
 dir_display="${dir/#$HOME/~}"
@@ -61,15 +80,50 @@ dir_display="${dir/#$HOME/~}"
 model=$(echo "$input" | jq -r '.model.display_name // "Claude"')
 
 branch=""
+git_seg=""
 if [ -n "$dir" ] && git -C "$dir" rev-parse --git-dir > /dev/null 2>&1; then
   branch=$(git -C "$dir" branch --show-current 2>/dev/null)
+
+  # 领先/落后 upstream 的提交数 (无 upstream 时静默跳过)
+  ahead_behind=$(git -C "$dir" rev-list --left-right --count '@{upstream}...HEAD' 2>/dev/null)
+  ahead_behind_seg=""
+  if [ -n "$ahead_behind" ]; then
+    behind=$(echo "$ahead_behind" | awk '{print $1}')
+    ahead=$(echo "$ahead_behind" | awk '{print $2}')
+    [ "$ahead" -gt 0 ] 2>/dev/null && ahead_behind_seg="${ahead_behind_seg}${GREEN}⇡${ahead}${RESET}"
+    [ "$behind" -gt 0 ] 2>/dev/null && ahead_behind_seg="${ahead_behind_seg}${RED}⇣${behind}${RESET}"
+  fi
+
+  # 脏工作区指示器: 暂存/修改/未跟踪 文件数
+  staged=$(git -C "$dir" diff --cached --numstat 2>/dev/null | wc -l | tr -d ' ')
+  modified=$(git -C "$dir" diff --numstat 2>/dev/null | wc -l | tr -d ' ')
+  untracked=$(git -C "$dir" ls-files --others --exclude-standard 2>/dev/null | wc -l | tr -d ' ')
+  dirty_seg=""
+  [ "$staged" -gt 0 ] && dirty_seg="${dirty_seg}${GREEN}+${staged}${RESET}"
+  [ "$modified" -gt 0 ] && dirty_seg="${dirty_seg}${YELLOW}~${modified}${RESET}"
+  [ "$untracked" -gt 0 ] && dirty_seg="${dirty_seg}${DIM}?${untracked}${RESET}"
+
+  git_seg="${MAGENTA}⎇ ${branch}${RESET}"
+  [ -n "$ahead_behind_seg" ] && git_seg="${git_seg} ${ahead_behind_seg}"
+  [ -n "$dirty_seg" ] && git_seg="${git_seg} ${dirty_seg}"
+fi
+
+# PR/MR 状态 (来自官方 JSON, 无需额外调用; GitHub PR 或 GitLab MR 均适用)
+pr_number=$(echo "$input" | jq -r '.pr.number // empty')
+pr_state=$(echo "$input" | jq -r '.pr.review_state // empty')
+pr_seg=""
+if [ -n "$pr_number" ]; then
+  pr_icon=$(icon_for_review_state "$pr_state")
+  pr_color=$(color_for_review_state "$pr_state")
+  pr_seg="${pr_color}${pr_icon} #${pr_number}${RESET}"
 fi
 
 effort=$(echo "$input" | jq -r '.effort.level // empty')
 thinking=$(echo "$input" | jq -r '.thinking.enabled // false')
 
 line1="${CYAN}📁 ${dir_display}${RESET}"
-[ -n "$branch" ] && line1="${line1} ${DIM}│${RESET} ${MAGENTA}${branch}${RESET}"
+[ -n "$git_seg" ] && line1="${line1} ${DIM}│${RESET} ${git_seg}"
+[ -n "$pr_seg" ] && line1="${line1} ${DIM}│${RESET} ${pr_seg}"
 line1="${line1} ${DIM}│${RESET} ${model}"
 
 if [ -n "$effort" ] && [ "$effort" != "null" ]; then
