@@ -76,6 +76,10 @@ Ahead/behind and the dirty-tree indicator are the only local `git` calls the scr
 
 The script is intentionally flat and readable — each numbered section builds one line. Delete a section (and its line from the final `printf`) to drop a row, or copy the pattern (`jq -r '.field // empty'` + graceful fallback) to add a new one.
 
+## Contributors
+
+- [eric1hua](https://github.com/eric1hua) — creator & maintainer
+
 ## License
 
 MIT

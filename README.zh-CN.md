@@ -76,6 +76,10 @@ chmod +x ~/.claude/statusline.sh
 
 脚本刻意保持扁平、易读 —— 每个编号小节负责拼出一行。删掉某个小节（连同最后 `printf` 里对应的那一行）即可去掉一行显示；照着现有写法（`jq -r '.field // empty'` + 优雅降级）复制一份即可新增一行。
 
+## 贡献者
+
+- [eric1hua](https://github.com/eric1hua) —— 创建者 & 维护者
+
 ## 许可证
 
 MIT
