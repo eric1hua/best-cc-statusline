@@ -72,10 +72,28 @@ color_for_review_state() {
   esac
 }
 
+# resets_at 可能是 epoch 秒, 也可能是 ISO8601 字符串; 且 GNU date(Git Bash/Linux)
+# 与 BSD date(macOS) 语法不同 —— 逐个 fallback, 全失败则静默输出空串
+fmt_reset() {
+  local v="$1" f="$2"
+  case "$v" in
+    ''|null) return ;;
+    *[!0-9]*) date -d "$v" "$f" 2>/dev/null || date -j -f '%Y-%m-%dT%H:%M:%S' "${v%%[+Z]*}" "$f" 2>/dev/null ;;
+    *) date -d "@$v" "$f" 2>/dev/null || date -r "$v" "$f" 2>/dev/null ;;
+  esac
+}
+
 # ================= 第1行: 路径 │ git分支+状态 │ PR │ 模型 │ effort/思考模式 =================
 
 dir=$(echo "$input" | jq -r '.workspace.current_dir // .cwd // empty')
-dir_display="${dir/#$HOME/~}"
+# Windows: CC 传来的是 C:\Users\... 形式, 而 Git Bash $HOME 是 /c/Users/... , 前缀匹配不上
+# cygpath 把两侧统一成 C:/Users/... 形式 (非 Windows 上 cygpath 不存在, 回退原值, 行为不变)
+dir_display=$(cygpath -m "$dir" 2>/dev/null || printf "%s" "$dir")
+# 替换串里直接写 ~ 会被 bash 做波浪号展开, 结果又变回 $HOME 全路径, 等于没缩写; 故存进变量
+tilde="~"
+win_home=$(cygpath -m "$HOME" 2>/dev/null)
+[ -n "$win_home" ] && dir_display="${dir_display/#$win_home/$tilde}"
+dir_display="${dir_display/#$HOME/$tilde}"
 
 model=$(echo "$input" | jq -r '.model.display_name // "Claude"')
 
@@ -194,7 +212,7 @@ if [ -n "$five_pct" ]; then
   c=$(color_for_pct "$p")
   seg="${c}5h ${p}%${RESET}"
   if [ -n "$five_reset" ] && [ "$five_reset" != "null" ]; then
-    seg="${seg} ${DIM}($(date -r "$five_reset" "+%H:%M" 2>/dev/null) 重置)${RESET}"
+    seg="${seg} ${DIM}($(fmt_reset "$five_reset" "+%H:%M") 重置)${RESET}"
   fi
   rate_parts+=("$seg")
 fi
@@ -204,7 +222,7 @@ if [ -n "$week_pct" ]; then
   c=$(color_for_pct "$p")
   seg="${c}7d ${p}%${RESET}"
   if [ -n "$week_reset" ] && [ "$week_reset" != "null" ]; then
-    seg="${seg} ${DIM}($(date -r "$week_reset" "+%m/%d %H:%M" 2>/dev/null) 重置)${RESET}"
+    seg="${seg} ${DIM}($(fmt_reset "$week_reset" "+%m/%d %H:%M") 重置)${RESET}"
   fi
   rate_parts+=("$seg")
 fi
@@ -218,4 +236,4 @@ fi
 
 # ================= 输出 =================
 
-printf '%b\n%b\n%b\n%b\n' "$line1" "$line2" "$line3" "$line4"
+printf '%s\n%s\n%s\n%s\n' "$line1" "$line2" "$line3" "$line4"
