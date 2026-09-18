@@ -24,8 +24,9 @@ Every field degrades gracefully when the underlying JSON field is absent (e.g. n
 
 ## Requirements
 
-- `bash`, `jq` (`brew install jq` / `apt install jq`)
+- `bash`, `jq` (`brew install jq` / `apt install jq` / `winget install jqlang.jq`)
 - `git` (optional, only used for the branch segment; falls back silently outside a repo)
+- On Windows, `bash` comes from Git Bash (bundled with Git for Windows) — see [Windows (Git Bash)](#windows-git-bash)
 
 ## Install
 
@@ -48,13 +49,47 @@ Then add to `~/.claude/settings.json` (see [`settings.example.json`](./settings.
 
 Reload Claude Code (or start a new session) and the status line appears at the bottom.
 
+### Windows (Git Bash)
+
+The script runs fine on Windows through Git Bash, but two steps differ from macOS/Linux.
+
+**1. Install `jq`** — Git for Windows does not bundle it:
+
+```powershell
+winget install --id jqlang.jq
+```
+
+Then restart Claude Code so it picks up the updated `PATH`.
+
+**2. Point `statusLine` at Git Bash by absolute path** — do *not* use a bare `bash`:
+
+```json
+{
+  "statusLine": {
+    "type": "command",
+    "command": "\"C:\\Program Files\\Git\\bin\\bash.exe\" \"C:/Users/<you>/.claude/statusline.sh\"",
+    "padding": 1
+  }
+}
+```
+
+> On a default Windows `PATH`, a bare `bash` resolves to `C:\Windows\System32\bash.exe` — the **WSL launcher**, not Git Bash. WSL cannot read drive-letter paths such as `C:\Users\...` and has its own environment, so the status line silently fails. Always spell out the Git Bash path.
+
+Download the script with:
+
+```powershell
+curl.exe -o "$env:USERPROFILE\.claude\statusline.sh" https://raw.githubusercontent.com/eric1hua/best-cc-statusline/main/statusline.sh
+```
+
+For the icons (`⎇ ▓ ⇡ 🔥`) to render correctly, use a modern terminal such as Windows Terminal; the legacy console host does not handle them well.
+
 ### Install via AI agent
 
 Prefer to have an agent do it? Paste this prompt into Claude Code (or any coding agent with shell access):
 
 ```
 Install best-cc-statusline for Claude Code:
-1. Check `jq` is installed (`jq --version`); if missing, install it (`brew install jq` on macOS, `apt install jq` on Debian/Ubuntu).
+1. Check `jq` is installed (`jq --version`); if missing, install it (`brew install jq` on macOS, `apt install jq` on Debian/Ubuntu, `winget install jqlang.jq` on Windows).
 2. Download https://raw.githubusercontent.com/eric1hua/best-cc-statusline/main/statusline.sh to ~/.claude/statusline.sh and `chmod +x` it.
 3. Merge a "statusLine" key into ~/.claude/settings.json (create the file if absent, preserve any existing keys):
    {"type": "command", "command": "bash \"$HOME/.claude/statusline.sh\"", "padding": 1}
