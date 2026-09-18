@@ -24,8 +24,9 @@
 
 ## 依赖要求
 
-- `bash`、`jq`（`brew install jq` / `apt install jq`）
+- `bash`、`jq`（`brew install jq` / `apt install jq` / `winget install jqlang.jq`）
 - `git`（可选，仅用于分支信息；不在仓库内时会静默跳过）
+- Windows 上的 `bash` 来自 Git Bash（随 Git for Windows 一起安装）——见 [Windows（Git Bash）](#windowsgit-bash)
 
 ## 安装
 
@@ -48,13 +49,47 @@ chmod +x ~/.claude/statusline.sh
 
 重新加载 Claude Code（或开启新会话），状态栏就会出现在底部。
 
+### Windows（Git Bash）
+
+脚本在 Windows 上通过 Git Bash 可以正常运行，但有两步和 macOS/Linux 不同。
+
+**1. 安装 `jq`** —— Git for Windows 并不自带：
+
+```powershell
+winget install --id jqlang.jq
+```
+
+装完重启 Claude Code，让它读到更新后的 `PATH`。
+
+**2. `statusLine` 要写 Git Bash 的绝对路径** —— 不要直接写 `bash`：
+
+```json
+{
+  "statusLine": {
+    "type": "command",
+    "command": "\"C:\\Program Files\\Git\\bin\\bash.exe\" \"C:/Users/<你的用户名>/.claude/statusline.sh\"",
+    "padding": 1
+  }
+}
+```
+
+> 在 Windows 默认 `PATH` 下，直接写 `bash` 会解析到 `C:\Windows\System32\bash.exe`——那是 **WSL 的启动器**，不是 Git Bash。WSL 读不到 `C:\Users\...` 这类盘符路径，环境也完全独立，结果就是状态栏毫无反应且不报错。所以务必写全 Git Bash 的路径。
+
+下载脚本：
+
+```powershell
+curl.exe -o "$env:USERPROFILE\.claude\statusline.sh" https://raw.githubusercontent.com/eric1hua/best-cc-statusline/main/statusline.sh
+```
+
+另外，图标（`⎇ ▓ ⇡ 🔥`）需要现代终端才能正常显示，建议用 Windows Terminal，传统的控制台窗口渲染效果不佳。
+
 ### 用 AI Agent 安装
 
 想让 Agent 帮你搞定？把下面这段提示词粘贴给 Claude Code（或任何有 shell 权限的编程 Agent）：
 
 ```
 帮我安装 Claude Code 的 best-cc-statusline 状态栏脚本：
-1. 检查是否已安装 `jq`（`jq --version`）；如果没有，请安装（macOS 用 `brew install jq`，Debian/Ubuntu 用 `apt install jq`）。
+1. 检查是否已安装 `jq`（`jq --version`）；如果没有，请安装（macOS 用 `brew install jq`，Debian/Ubuntu 用 `apt install jq`，Windows 用 `winget install jqlang.jq`）。
 2. 下载 https://raw.githubusercontent.com/eric1hua/best-cc-statusline/main/statusline.sh 到 ~/.claude/statusline.sh，并 `chmod +x` 赋予执行权限。
 3. 将以下 "statusLine" 配置合并进 ~/.claude/settings.json（文件不存在则创建，已有配置请保留）：
    {"type": "command", "command": "bash \"$HOME/.claude/statusline.sh\"", "padding": 1}
