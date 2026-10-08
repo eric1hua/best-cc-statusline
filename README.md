@@ -2,36 +2,47 @@
 
 English | [简体中文](./README.zh-CN.md)
 
-A batteries-included, multi-line status line script for [Claude Code](https://claude.com/claude-code) — no third-party tools, no network calls, just `bash` + `jq` and the official stdin JSON that Claude Code already sends your status line command.
+A batteries-included, multi-line status line script for [Claude Code](https://claude.com/claude-code) — no third-party tools or network calls; it uses `bash`, `jq`, `git`, and the official stdin JSON that Claude Code already sends your status line command.
 
 ```
 📁 ~/projects/demo │ ⎇ feature/xxx ⇡1 ~2 │ 🔍 #42 │ Claude Sonnet 5 │ ⚙ high 🧠
 ▓▓░░░░░░░░ 23% (45.2k/200.0k tok)
-↑45.2k │ ↓3.8k │ 🔥 缓存命中 87% │ 💰$0.457 │ ⏱️12m5s
-5h 42% (06:12 重置) │ 7d 18% (09/10 05:12 重置)
+↑45.2k │ ↓3.8k │ 🔥 cache hit 87% │ 💰$0.457 │ ⏱️12m5s
+5h 42% (resets 06:12) │ 7d 18% (resets 09/10 05:12)
 ```
 
 ## What it shows
 
 | Line | Content |
 | --- | --- |
-| 1 | 📁 current directory (`~`-shortened) · `⎇` git branch, ahead/behind upstream (`⇡`/`⇣`), and a dirty-tree indicator (`+staged` `~modified` `?untracked`) when inside a repo · open PR/MR status badge (✅ approved / ❌ changes requested / 🔍 pending / 📝 draft) · model name · reasoning effort badge (`low`→`max`, color-coded) · 🧠 when extended thinking is on |
-| 2 | Context window usage as a 10-block progress bar, percentage, and used/total tokens (`45.2k/200.0k`) |
-| 3 | ↑ input tokens / ↓ output tokens · prompt-cache hit ratio (🔥 warm / ❄️ cold) · session cost · session duration |
+| 1 | 📁 current directory (`~`-shortened) · `⎇` git branch (or `@` plus the short commit hash for detached HEAD), ahead/behind upstream (`⇡`/`⇣`), and a dirty-tree indicator (`+staged` `~modified` `?untracked`) when inside a repo · open PR/MR status badge (✅ approved / ❌ changes requested / 🔍 pending / 📝 draft) · model name · reasoning effort badge (`low`→`max`, color-coded) · 🧠 when extended thinking is on |
+| 2 | Current context usage as a 10-block progress bar, percentage, and used/total tokens (`45.2k/200.0k`); used tokens are the sum of input and cache-creation/cache-read input tokens, with percentage × context-window size as a fallback |
+| 3 | ↑ input tokens (`total_input_tokens`) / ↓ output tokens · prompt-cache hit ratio (🔥 warm / ❄️ cold) · session cost · session duration (shown as `HhMMm` at 60 minutes or longer) |
 | 4 | 5-hour and 7-day Claude.ai subscription rate-limit usage, with reset time, color-coded by threshold (<70% green, 70-89% yellow, ≥90% red) |
 
 Every field degrades gracefully when the underlying JSON field is absent (e.g. no git repo, no rate-limit data for API-key billing, first turn of a session with no context data yet) — nothing ever errors or prints garbage.
 
 ## Requirements
 
-- `bash`, `jq` (`brew install jq` / `apt install jq` / `winget install jqlang.jq`)
+- `bash` 3.2+, `jq` (`brew install jq` / `apt install jq` / `winget install jqlang.jq`)
 - `git` (optional, only used for the branch segment; falls back silently outside a repo)
+- `date` is used to format rate-limit reset times (GNU and BSD/macOS `date` are both supported)
 - On Windows, `bash` comes from Git Bash (bundled with Git for Windows) — see [Windows (Git Bash)](#windows-git-bash)
 
 ## Install
 
+The script comes in two languages. Pick one; both install to the same path:
+
+| Version | File | Labels & comments |
+|---|---|---|
+| English | `statusline.sh` | English |
+| Simplified Chinese | `statusline.zh-CN.sh` | 简体中文 |
+
 ```bash
+# English
 curl -o ~/.claude/statusline.sh https://raw.githubusercontent.com/eric1hua/best-cc-statusline/main/statusline.sh
+# or Simplified Chinese
+# curl -o ~/.claude/statusline.sh https://raw.githubusercontent.com/eric1hua/best-cc-statusline/main/statusline.zh-CN.sh
 chmod +x ~/.claude/statusline.sh
 ```
 
@@ -90,7 +101,7 @@ Prefer to have an agent do it? Paste this prompt into Claude Code (or any coding
 ```
 Install best-cc-statusline for Claude Code:
 1. Check `jq` is installed (`jq --version`); if missing, install it (`brew install jq` on macOS, `apt install jq` on Debian/Ubuntu, `winget install jqlang.jq` on Windows).
-2. Download https://raw.githubusercontent.com/eric1hua/best-cc-statusline/main/statusline.sh to ~/.claude/statusline.sh and `chmod +x` it.
+2. Download https://raw.githubusercontent.com/eric1hua/best-cc-statusline/main/statusline.sh (English; use statusline.zh-CN.sh instead for Simplified Chinese) to ~/.claude/statusline.sh and `chmod +x` it.
 3. Merge a "statusLine" key into ~/.claude/settings.json (create the file if absent, preserve any existing keys):
    {"type": "command", "command": "bash \"$HOME/.claude/statusline.sh\"", "padding": 1}
 4. Tell me to reload Claude Code / start a new session to see it take effect.
@@ -105,11 +116,11 @@ Everything comes from the JSON Claude Code pipes to the status line command on s
 - `effort.level` — only present when the active model supports the reasoning-effort parameter
 - `pr.number` / `pr.review_state` — mirrors the footer's PR badge; present for both GitHub PRs and GitLab merge requests, absent once merged or closed
 
-Ahead/behind and the dirty-tree indicator are the only local `git` calls the script makes (branch, `rev-list --left-right --count`, `diff --numstat`, `ls-files --others`) — everything else comes straight from stdin.
+The script reads the stdin JSON in one `jq` invocation. It makes one local `git status --porcelain=v2 --branch --untracked-files=normal` call for branch and working-tree state; untracked directories are counted as one entry. Ahead/behind counts are derived from that status output. Outside a repository, git details are omitted.
 
 ## Customizing
 
-The script is intentionally flat and readable — each numbered section builds one line. Delete a section (and its line from the final `printf`) to drop a row, or copy the pattern (`jq -r '.field // empty'` + graceful fallback) to add a new one.
+The script is intentionally flat and readable — each numbered section builds one line. Delete a section (and its line from the final `printf`) to drop a row. The JSON is parsed once near the top into named values; to change a displayed field, update the corresponding extraction there and its use in the relevant line. Line 2 computes current context usage from `current_usage` with a percentage-and-size fallback; line 3 displays the JSON `total_input_tokens` value.
 
 ## Contributors
 

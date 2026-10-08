@@ -1,17 +1,16 @@
 #!/bin/bash
-# Claude Code status line (multi-line)
+# Claude Code 状态栏 (多行版)
 #
-# Line 1: 📁 path │ git branch + ahead/behind + dirty tree │ PR status │ model │ effort level │ 🧠 thinking
-# Line 2: context window bar + usage % (used/total tokens)
-# Line 3: input tokens │ output tokens │ cache hit rate │ cost │ duration
-# Line 4: 5-hour usage window (% + reset time) │ 7-day usage window (% + reset time)
+# 第1行: 📁路径 │ 🌿git分支+ahead/behind+脏区 │ PR状态 │ 模型 │ effort强度 │ 🧠思考模式
+# 第2行: 上下文窗口进度条 + 用量% (已用/总量 token)
+# 第3行: 上行(输入)token │ 下行(输出)token │ 缓存命中率 │ 费用 │ 耗时
+# 第4行: 5小时用量窗口(%+重置时间) │ 7天用量窗口(%+重置时间)
 #
-# Session data comes from Claude Code's stdin JSON, git status from the local repo; no network calls
-# Works with macOS Bash 3.2; needs only bash + jq + git (reset times use the system date)
-# Field reference: https://code.claude.com/docs/en/statusline
+# 会话数据来自 Claude Code 官方 stdin JSON, git 状态来自本地仓库, 无任何网络调用
+# 兼容 macOS Bash 3.2, 仅需 bash + jq + git (重置时间使用系统 date)
+# 字段参考: https://code.claude.com/docs/en/statusline
 
-# Read every field with one jq call; NUL separators keep empty values, newlines and backslashes
-# intact (tab-separated IFS would collapse empty columns)
+# 一次 jq 读取全部字段, 用 NUL 分隔保留空值、换行和反斜杠, 避免 tab 的 IFS 折叠空列
 {
   IFS= read -r -d '' dir
   IFS= read -r -d '' model
@@ -64,9 +63,9 @@
   ] | .[] | tostring + "\u0000"
 ')
 
-# ---------- Colors ----------
-# $'...' (ANSI-C quoting) stores real ESC bytes in the variables, so they work when concatenated
-# (plain single quotes are literal text, only interpreted when written directly in a printf format)
+# ---------- 颜色 ----------
+# $'...' (ANSI-C quoting) 让变量里存的是真正的 ESC 字节，字符串拼接时才能生效
+# (普通单引号只是字面文本，只有直接写在 printf 格式串里才会被解释)
 DIM=$'\033[2m'
 CYAN=$'\033[36m'
 BLUE=$'\033[34m'
@@ -76,7 +75,7 @@ YELLOW=$'\033[33m'
 RED=$'\033[31m'
 RESET=$'\033[0m'
 
-# Abbreviate numbers to k/m to keep the status line compact
+# 数字转 k/m 简写, 保持状态栏紧凑
 fmt_num() {
   local n=${1:-0} scale suffix tenths
   if [ "$n" -ge 1000000 ]; then scale=1000000; suffix=m
@@ -87,7 +86,7 @@ fmt_num() {
   printf '%d.%d%s' "$((tenths / 10))" "$((tenths % 10))" "$suffix"
 }
 
-# Usage % -> threshold color (<70 green, 70-89 yellow, >=90 red), matching the built-in context bar
+# 用量百分比 -> 阈值配色 (<70 绿, 70-89 黄, >=90 红), 与官方 context bar 配色规则一致
 color_for_pct() {
   local p=$1
   if [ "$p" -ge 90 ]; then echo "$RED"
@@ -96,7 +95,7 @@ color_for_pct() {
   fi
 }
 
-# Effort level -> color, low to high: green -> cyan -> yellow -> magenta -> red
+# effort 强度 -> 配色, 强度从低到高: green -> cyan -> yellow -> magenta -> red
 color_for_effort() {
   case "$1" in
     low) echo "$GREEN" ;;
@@ -108,7 +107,7 @@ color_for_effort() {
   esac
 }
 
-# PR/MR review state -> icon + color
+# PR/MR review 状态 -> 图标 + 配色
 icon_for_review_state() {
   case "$1" in
     approved) echo "✅" ;;
@@ -127,8 +126,8 @@ color_for_review_state() {
   esac
 }
 
-# resets_at may be epoch seconds or an ISO8601 string, and GNU date (Git Bash/Linux)
-# and BSD date (macOS) differ in syntax; try each in turn, print nothing if all fail
+# resets_at 可能是 epoch 秒, 也可能是 ISO8601 字符串; 且 GNU date(Git Bash/Linux)
+# 与 BSD date(macOS) 语法不同 —— 逐个 fallback, 全失败则静默输出空串
 fmt_reset() {
   local v="$1" f="$2"
   case "$v" in
@@ -138,12 +137,12 @@ fmt_reset() {
   esac
 }
 
-# ================= Line 1: path │ git branch + status │ PR │ model │ effort/thinking =================
+# ================= 第1行: 路径 │ git分支+状态 │ PR │ 模型 │ effort/思考模式 =================
 
-# Windows: Claude Code sends C:\Users\... paths while Git Bash's $HOME is /c/Users/..., so the prefix never matches;
-# cygpath normalizes both to C:/Users/... (cygpath is absent elsewhere, so the original value is kept)
+# Windows: CC 传来的是 C:\Users\... 形式, 而 Git Bash $HOME 是 /c/Users/... , 前缀匹配不上
+# cygpath 把两侧统一成 C:/Users/... 形式 (非 Windows 上 cygpath 不存在, 回退原值, 行为不变)
 dir_display=$(cygpath -m "$dir" 2>/dev/null || printf "%s" "$dir")
-# A literal ~ in the replacement gets tilde-expanded back to $HOME, so store it in a variable
+# 替换串里直接写 ~ 会被 bash 做波浪号展开, 结果又变回 $HOME 全路径, 等于没缩写; 故存进变量
 tilde="~"
 win_home=$(cygpath -m "$HOME" 2>/dev/null)
 [ -n "$win_home" ] && dir_display="${dir_display/#$win_home/$tilde}"
@@ -152,7 +151,7 @@ dir_display="${dir_display/#$HOME/$tilde}"
 branch=""
 git_seg=""
 if [ -n "$dir" ] && git_status=$(git -C "$dir" status --porcelain=v2 --branch --untracked-files=normal 2>/dev/null); then
-  # One call reads branch, upstream ahead/behind and dirty state; file paths aren't parsed (git escapes special characters)
+  # 一次读取分支、upstream 领先/落后及脏区; 路径部分无需解析 (git 会转义特殊字符)
   oid=""
   ahead=0
   behind=0
@@ -179,15 +178,15 @@ if [ -n "$dir" ] && git_status=$(git -C "$dir" status --porcelain=v2 --branch --
       '? '*) untracked=$((untracked + 1)) ;;
     esac
   done <<< "$git_status"
-  # Detached HEAD has no branch name; show the short commit hash instead
+  # detached HEAD 没有分支名, 用短提交号代替
   [ "$branch" = '(detached)' ] && branch="@${oid:0:7}"
 
-  # Commits ahead of/behind upstream (both 0 when there is no upstream)
+  # 领先/落后 upstream 的提交数 (无 upstream 时均为 0)
   ahead_behind_seg=""
   [ "$ahead" -gt 0 ] && ahead_behind_seg="${ahead_behind_seg}${GREEN}⇡${ahead}${RESET}"
   [ "$behind" -gt 0 ] && ahead_behind_seg="${ahead_behind_seg}${RED}⇣${behind}${RESET}"
 
-  # Dirty tree indicator: staged/modified/untracked entries (normal mode counts an untracked directory as one entry)
+  # 脏工作区指示器: 暂存/修改/未跟踪 条目数 (normal 模式将未跟踪目录合为一项)
   dirty_seg=""
   [ "$staged" -gt 0 ] && dirty_seg="${dirty_seg}${GREEN}+${staged}${RESET}"
   [ "$modified" -gt 0 ] && dirty_seg="${dirty_seg}${YELLOW}~${modified}${RESET}"
@@ -198,7 +197,7 @@ if [ -n "$dir" ] && git_status=$(git -C "$dir" status --porcelain=v2 --branch --
   [ -n "$dirty_seg" ] && git_seg="${git_seg} ${dirty_seg}"
 fi
 
-# PR/MR status (from the stdin JSON, no extra calls; works for GitHub PRs and GitLab MRs)
+# PR/MR 状态 (来自官方 JSON, 无需额外调用; GitHub PR 或 GitLab MR 均适用)
 pr_seg=""
 if [ -n "$pr_number" ]; then
   pr_icon=$(icon_for_review_state "$pr_state")
@@ -217,7 +216,7 @@ if [ -n "$effort" ] && [ "$effort" != "null" ]; then
 fi
 [ "$thinking" = "true" ] && line1="${line1} 🧠"
 
-# ================= Line 2: context window bar =================
+# ================= 第2行: 上下文窗口进度条 =================
 
 if [ -n "$ctx_pct" ] && [ "$ctx_pct" != "null" ]; then
   pct_int=$(printf '%.0f' "$ctx_pct")
@@ -234,10 +233,10 @@ if [ -n "$ctx_pct" ] && [ "$ctx_pct" != "null" ]; then
 
   line2="${bar_color}${bar} ${pct_int}%${RESET} ${DIM}($(fmt_num "$ctx_used")/$(fmt_num "$ctx_size") tok)${RESET}"
 else
-  line2="${DIM}context: waiting for first response...${RESET}"
+  line2="${DIM}上下文: 等待首次响应...${RESET}"
 fi
 
-# ================= Line 3: input/output tokens │ cache hit rate │ cost │ duration =================
+# ================= 第3行: 上行/下行 token │ 缓存命中率 │ 费用 │ 耗时 =================
 
 duration_sec=$((duration_ms / 1000))
 mins=$((duration_sec / 60))
@@ -253,13 +252,13 @@ line3="${BLUE}↑$(fmt_num "$in_tok")${RESET} ${DIM}│${RESET} ${BLUE}↓$(fmt_
 if [ -n "$hit_pct" ]; then
   warm_icon="❄️"
   [ "$cache_warm" = "true" ] && warm_icon="🔥"
-  line3="${line3} ${DIM}│${RESET} ${warm_icon} cache hit ${hit_pct}%"
+  line3="${line3} ${DIM}│${RESET} ${warm_icon} 缓存命中 ${hit_pct}%"
 fi
 
 cost_fmt=$(printf '$%.3f' "$cost")
 line3="${line3} ${DIM}│${RESET} 💰${cost_fmt} ${DIM}│${RESET} ⏱️${duration}"
 
-# ================= Line 4: 5-hour / 7-day usage windows =================
+# ================= 第4行: 5小时 / 7天 用量窗口 =================
 
 rate_parts=()
 
@@ -268,7 +267,7 @@ if [ -n "$five_pct" ]; then
   c=$(color_for_pct "$p")
   seg="${c}5h ${p}%${RESET}"
   if [ -n "$five_reset" ] && [ "$five_reset" != "null" ]; then
-    seg="${seg} ${DIM}(resets $(fmt_reset "$five_reset" "+%H:%M"))${RESET}"
+    seg="${seg} ${DIM}($(fmt_reset "$five_reset" "+%H:%M") 重置)${RESET}"
   fi
   rate_parts+=("$seg")
 fi
@@ -278,7 +277,7 @@ if [ -n "$week_pct" ]; then
   c=$(color_for_pct "$p")
   seg="${c}7d ${p}%${RESET}"
   if [ -n "$week_reset" ] && [ "$week_reset" != "null" ]; then
-    seg="${seg} ${DIM}(resets $(fmt_reset "$week_reset" "+%m/%d %H:%M"))${RESET}"
+    seg="${seg} ${DIM}($(fmt_reset "$week_reset" "+%m/%d %H:%M") 重置)${RESET}"
   fi
   rate_parts+=("$seg")
 fi
@@ -287,9 +286,9 @@ if [ "${#rate_parts[@]}" -gt 0 ]; then
   line4="${rate_parts[0]}"
   [ "${#rate_parts[@]}" -gt 1 ] && line4="${line4} ${DIM}│${RESET} ${rate_parts[1]}"
 else
-  line4="${DIM}usage: no data yet (needs Pro/Max + a first message)${RESET}"
+  line4="${DIM}订阅用量: 暂无数据(需 Pro/Max 订阅 + 已发生对话)${RESET}"
 fi
 
-# ================= Output =================
+# ================= 输出 =================
 
 printf '%s\n' "$line1" "$line2" "$line3" "$line4"
